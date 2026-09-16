@@ -28,7 +28,7 @@ The base model is multimodal (image branch, graph branch, scalar-feature branch,
 
 | Branch | Primary technique | Secondary / comparison | Library |
 |---|---|---|---|
-| Image (EfficientNetB2) | Grad-CAM | Grad-CAM++ | `captum` |
+| Image (EfficientNetB2) | Grad-CAM | Grad-CAM++ | custom (`captum` ships Grad-CAM but not Grad-CAM++; both are implemented by hand from a shared hook so the comparison is apples-to-apples) |
 | Graph (6 keypoints, GNN) | GNNExplainer | Counterfactual perturbation of node coordinates | `torch_geometric` |
 | Scalar features (7 features) | SHAP | Permutation importance | `shap` |
 | Clinical concepts (tipo_implante, thread angle) | TCAV | Partial concept bottleneck (comparison) | custom |
@@ -46,7 +46,7 @@ The base model is multimodal (image branch, graph branch, scalar-feature branch,
 | 4 | `(4) keypoints_extraction.py` | Adapted from `fed_manual 1` | Same anatomical keypoint extraction as the original, plus: persists `tipo_implante` (U/Recto) as a CSV column, and adds `build_concept_dataset()` — exports clean (unannotated) crops into `concepts/<concept_name>/{positive,negative}/` per split, for use as TCAV probe sets. Concepts included so far: `tipo_implante_U`, `tipo_implante_Recto`, `steep_thread_angle`. |
 | 5 | `(5) augmentation.py` | Identical to `fed_manual 1` | Two-stage crop + intensity augmentation. Not modified — confirmed it ignores the new `tipo_implante` column and the `concepts/` folder added in step 4. |
 | 6 | `(6) train.py` | Identical to `fed_manual 1` | Trains the base UNet + ImplantClassifier. Kept here only so the base models can be reproduced from this folder if needed; not re-run in practice since `fed_manual 1`'s trained checkpoints are reused as-is. |
-| 7 | `(7) gradcam_explain.py` | Planned | Grad-CAM / Integrated Gradients over the EfficientNetB2 branch (`captum`). Produces saliency maps per test image and aggregate visualizations. |
+| 7 | `(7) gradcam_explain.py` | Done | Grad-CAM vs. Grad-CAM++ over the EfficientNetB2 branch's last conv feature map (`cnn_backbone.features`), computed from a single shared forward/backward pass for a fair comparison (captum ships Grad-CAM but not Grad-CAM++, so both are implemented directly). Produces per-image comparison figures, per-class aggregate saliency maps, and agreement metrics (cosine similarity, Pearson correlation, top-20% IoU) between the two methods. Outputs `outputs/explanations/gradcam/{per_image,aggregate}/` + `gradcam_comparison.json`. |
 | 8 | `(8) gnn_explain.py` | Planned | GNNExplainer over the graph branch (6-keypoint graph). Identifies which keypoints/edges most influence brand/diameter predictions; complements with counterfactual perturbation of node coordinates. |
 | 9 | `(9) shap_explain.py` | Planned | SHAP over the 7 scalar features (`distance_cm`, `pixel_per_cm`, `bbox_width`, `bbox_height`, `implant_bbox_ratio`, `angle_left_valley`, `angle_right_valley`). |
 | 10 | `(10) tcav_analysis.py` | Done | Trains CAVs on the EfficientNetB2 bottleneck from the `concepts/` folders built in step 4 (`tipo_implante_U/Recto`, `steep_thread_angle`), computes directional derivatives (TCAV scores) per brand/diameter class against the trained `ImplantClassifier`, and bootstraps a significance test (two-sided t-test vs. random-concept CAVs). Outputs `outputs/explanations/tcav/tcav_scores.{json,png}`. |
