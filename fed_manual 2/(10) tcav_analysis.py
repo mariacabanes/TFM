@@ -31,12 +31,8 @@ Usage:
 """
 
 import argparse
-import ast
 import json
-import os
 import random
-import re
-import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -48,163 +44,26 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 import torch
-from torch.utils.data import Dataset, DataLoader
-import torchvision.transforms as transforms
-from torch_geometric.utils import dense_to_sparse
+from torch.utils.data import DataLoader
 
-from PIL import Image
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
 from scipy.stats import ttest_ind
 
-SEED = 1225
+from explain_common import (
+    SEED, HERE, ActivationGrabber, ImplantProbeDataset,
+    build_edge_index, build_label_maps_and_scaler, find_fed1_dir, find_train_csv,
+    load_masked_image, load_model, load_probe_df, mask_path_for, IMAGE_TRANSFORM,
+)
+
 random.seed(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
-
-SCALAR_COLS = [
-    "distance_cm", "pixel_per_cm", "bbox_width", "bbox_height",
-    "implant_bbox_ratio", "angle_left_valley", "angle_right_valley",
-]
-NODE_KEYS = [
-    "left_top", "right_top", "left_bottom", "right_bottom",
-    "interior_left", "interior_right",
-]
-
-IMAGE_TRANSFORM = transforms.Compose([
-    transforms.Resize((260, 260)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
-
-_here = Path(__file__).parent.resolve()
-
-
-# =============================================================================
-#  PATH DISCOVERY
-# =============================================================================
-
-def find_fed1_dir() -> Path:
-    """Locates the sibling `fed_manual 1` folder (trained models + train CSV)."""
-    env = os.environ.get("FED_MANUAL_1_DIR")
-    if env:
-        return Path(env).resolve()
-    repo_root = _here.parent
-    candidates = sorted(p for p in repo_root.glob("fed_manual 1*") if p.is_dir())
-    if not candidates:
-        raise FileNotFoundError(
-            "Could not find a 'fed_manual 1*' folder next to 'fed_manual 2'. "
-            "Set FED_MANUAL_1_DIR to override."
-        )
-    return candidates[0]
-
-
-def find_latest_checkpoint(models_dir: Path) -> Path:
-    candidates = list(models_dir.rglob("EfficientNetGNN_best_valDiam_*.pt"))
-    if not candidates:
-        raise FileNotFoundError(
-            f"No ImplantClassifier checkpoint found under {models_dir}. "
-            "Run fed_manual 1's '(6) train.py' first."
-        )
-    return max(candidates, key=lambda p: p.stat().st_mtime)
-
-
-# =============================================================================
-#  LABEL MAPS / SCALER  (must mirror fed_manual 1's train.py exactly)
-# =============================================================================
-
-def build_label_maps_and_scaler(train_csv: Path):
-    df = pd.read_csv(train_csv)
-    scaler = StandardScaler()
-    scaler.fit(df[SCALAR_COLS])
-    brands = sorted(df["brand"].unique())
-    diameters = sorted(df["implant_diameter_mm"].unique())
-    brand_map = {b: i for i, b in enumerate(brands)}
-    diameter_map = {d: i for i, d in enumerate(diameters)}
-    return brand_map, diameter_map, scaler
-
-
-def _parse_node(val):
-    s = str(val).strip()
-    s = re.sub(r"\bnan\b", "0.0", s, flags=re.IGNORECASE)
-    s = re.sub(r"\binf\b", "0.0", s, flags=re.IGNORECASE)
-    try:
-        r = ast.literal_eval(s)
-        if isinstance(r, tuple):
-            return [float(r[0]), float(r[1])]
-        return [float(r), 0.0]
-    except (ValueError, SyntaxError):
-        return [0.0, 0.0]
-
-
-def build_edge_index(n_nodes: int, batch_size: int, device) -> torch.Tensor:
-    adj = torch.ones((n_nodes, n_nodes)) - torch.eye(n_nodes)
-    ei, _ = dense_to_sparse(adj)
-    return torch.cat([ei + b * n_nodes for b in range(batch_size)], dim=1).to(device)
-
-
-# =============================================================================
-#  IMAGE LOADING  (mirrors the mask-multiplied preprocessing used at train time)
-# =============================================================================
-
-def load_masked_image(image_path: Path, mask_path: Path) -> Image.Image:
-    image = Image.open(image_path).convert("RGB")
-    if mask_path.exists():
-        mask = Image.open(mask_path).convert("L")
-        if mask.size != image.size:
-            mask = mask.resize(image.size, Image.NEAREST)
-        image_np = np.array(image)
-        mask_np = np.array(mask)
-        image = Image.fromarray((image_np * (mask_np > 0)[..., None]).astype(np.uint8))
-    return image
-
-
-def mask_path_for(image_path: Path, split_dir: Path) -> Path:
-    return split_dir / "masks" / f"{image_path.stem}_seg.png"
-
-
-# =============================================================================
-#  PROBE DATASET  (test examples used to compute directional derivatives)
-# =============================================================================
-
-class TCAVProbeDataset(Dataset):
-    def __init__(self, df: pd.DataFrame, img_dir: Path, mask_dir: Path):
-        self.data = df.reset_index(drop=True)
-        self.img_dir = img_dir
-        self.mask_dir = mask_dir
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        row = self.data.iloc[idx]
-        img_path = self.img_dir / f"{row['image_name']}.png"
-        mask_path = self.mask_dir / f"{row['image_name']}_seg.png"
-        image = IMAGE_TRANSFORM(load_masked_image(img_path, mask_path))
-        node_feats = torch.tensor([_parse_node(row[k]) for k in NODE_KEYS], dtype=torch.float32)
-        scalar_feat = torch.tensor([row[c] for c in SCALAR_COLS], dtype=torch.float32)
-        return image, node_feats, scalar_feat, int(row["brand_idx"]), int(row["diameter_idx"])
 
 
 # =============================================================================
 #  ACTIVATIONS / CAV
 # =============================================================================
-
-class ActivationGrabber:
-    """Hooks `module` and retains the gradient of its output for backprop."""
-
-    def __init__(self, module: torch.nn.Module):
-        self.activation = None
-        self.handle = module.register_forward_hook(self._hook)
-
-    def _hook(self, module, inp, out):
-        out.retain_grad()
-        self.activation = out
-
-    def remove(self):
-        self.handle.remove()
-
 
 @torch.no_grad()
 def extract_image_activations(model, image_paths: List[Path], split_dir: Path,
@@ -245,7 +104,7 @@ def directional_derivatives(model, loader: DataLoader, cav_vector: np.ndarray,
     cav_t = torch.tensor(cav_vector, device=device)
     scores = []
     model.eval()
-    for images, node_feats, scalar_feat, brand_idx, diameter_idx in loader:
+    for images, node_feats, scalar_feat, brand_idx, diameter_idx, image_name in loader:
         images = images.to(device)
         node_feats = node_feats.to(device)
         scalar_feat = scalar_feat.to(device)
@@ -376,42 +235,19 @@ def main():
     print(f"[INFO] Device: {device}")
 
     fed1_dir = find_fed1_dir()
-    fed2_dir = _here
+    fed2_dir = HERE
     print(f"[INFO] fed_manual 1 (models, read-only): {fed1_dir}")
     print(f"[INFO] fed_manual 2 (concepts + probes) : {fed2_dir}")
 
-    sys.path.insert(0, str(fed1_dir))
-    from models.ImplantClassifier import ImplantClassifier  # noqa: E402
-
-    train_csv = fed1_dir / "outputs" / "dataset_split" / "train" / "features_augmented.csv"
-    if not train_csv.exists():
-        train_csv = fed1_dir / "outputs" / "dataset_split" / "train" / "features.csv"
-    if not train_csv.exists():
-        raise FileNotFoundError(f"Could not find train features CSV under {train_csv.parent}.")
-    brand_map, diameter_map, scaler = build_label_maps_and_scaler(train_csv)
+    brand_map, diameter_map, scaler = build_label_maps_and_scaler(find_train_csv(fed1_dir))
     print(f"[INFO] Brands ({len(brand_map)}): {list(brand_map)}")
     print(f"[INFO] Diameters ({len(diameter_map)}): {list(diameter_map)}")
 
-    ckpt_path = Path(args.model) if args.model else find_latest_checkpoint(fed1_dir / "outputs" / "models")
+    model, ckpt_path = load_model(fed1_dir, brand_map, diameter_map, device, args.model)
     print(f"[INFO] Checkpoint: {ckpt_path}")
-    model = ImplantClassifier(n_brands=len(brand_map), n_diameters=len(diameter_map)).to(device)
-    model.load_state_dict(torch.load(ckpt_path, map_location=device))
-    model.eval()
 
     # ---- Probe split (class-conditional examples for directional derivatives) ----
-    probe_split_dir = fed2_dir / "outputs" / "dataset_split" / args.split
-    probe_csv = probe_split_dir / "features.csv"
-    if not probe_csv.exists():
-        raise FileNotFoundError(f"{probe_csv} not found. Run this folder's '(4) keypoints_extraction.py' first.")
-    probe_df = pd.read_csv(probe_csv)
-
-    existing = {p.stem for p in (probe_split_dir / "cropped_images").glob("*.png")}
-    probe_df = probe_df[probe_df["image_name"].isin(existing)]
-    probe_df = probe_df[probe_df["brand"].isin(brand_map) & probe_df["implant_diameter_mm"].isin(diameter_map)]
-    probe_df = probe_df.dropna(subset=SCALAR_COLS).reset_index(drop=True)
-    probe_df[SCALAR_COLS] = scaler.transform(probe_df[SCALAR_COLS])
-    probe_df["brand_idx"] = probe_df["brand"].map(brand_map)
-    probe_df["diameter_idx"] = probe_df["implant_diameter_mm"].map(diameter_map)
+    probe_df, probe_split_dir = load_probe_df(fed2_dir, args.split, brand_map, diameter_map, scaler)
     print(f"[INFO] Probe split '{args.split}': {len(probe_df)} usable examples.")
 
     # ---- Concept probe sets + random-baseline pool ----
@@ -447,7 +283,7 @@ def main():
                     continue
                 subset = subset.sample(min(len(subset), args.max_examples_per_class), random_state=SEED)
 
-                probe_ds = TCAVProbeDataset(subset, probe_split_dir / "cropped_images", probe_split_dir / "masks")
+                probe_ds = ImplantProbeDataset(subset, probe_split_dir / "cropped_images", probe_split_dir / "masks")
                 probe_loader = DataLoader(probe_ds, batch_size=args.batch_size, shuffle=False)
 
                 concept_scores, cav_accs = bootstrap_concept_tcav(
