@@ -3,6 +3,7 @@ import os
 import cv2
 import json
 import random
+import shutil
 import numpy as np
 import pandas as pd
 import math
@@ -1226,7 +1227,7 @@ def process_implant(file_id, sample_img, annotation_df, labels, base_dir: Path):
                     # Valley regression angles 
                     "angle_left_valley": angle_left,
                     "angle_right_valley": angle_right,
-                    "position": position
+                    "position": position,
                     # concepto U/Recto para TCAV
                     "tipo_implante": tipo_implante,
                 }
