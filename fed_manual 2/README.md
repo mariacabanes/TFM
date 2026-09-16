@@ -53,8 +53,7 @@ The base model is multimodal (image branch, graph branch, scalar-feature branch,
 | 11 | `(11) cbm_partial.py` | Planned | Partial concept-bottleneck head trained alongside brand/diameter heads (shared trunk, no full model redesign), for direct comparison against TCAV on the same concept set. |
 | 12 | `(12) evaluate_explanations.py` | Planned | Quantitative reliability evaluation across all techniques above: insertion/deletion, fidelity+/-, sanity checks, stability under input perturbations. Run on the test set. |
 | 13 | `(13) expert_study/` | Planned | Materials and analysis for the expert evaluation study: final questionnaire, case selection protocol, session recording/analysis scripts. Feeds the discussion section on clinical usefulness and trust (RQ3: problematic-case detection). |
-| 14 | `common_explain.py` | Done | Shared loading/preprocessing utilities for the explainability
-scripts in this folder (Grad-CAM, GNNExplainer, SHAP, TCAV, CBM, ...). |
+| * | `common_explain.py` | Done | Shared loading/preprocessing utilities for the explainability scripts in this folder (Grad-CAM, GNNExplainer, SHAP, TCAV, CBM, ...). |
 
 ---
 
