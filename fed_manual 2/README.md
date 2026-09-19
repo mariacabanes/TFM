@@ -39,7 +39,7 @@ The base model is multimodal (image branch, graph branch, scalar-feature branch,
 
 | # | Script | Status | Purpose |
 |---|---|---|---|
-| 0 | `(0) run_all.py` | Identical to `fed_manual 1` | Master pipeline runner, copied over unchanged so steps 1–4 can be re-run standalone inside this folder if needed. |
+| 0 | `(0) run_all.py` | Planned | Master pipeline runner, copied over unchanged so steps 1–4 can be re-run standalone inside this folder if needed. |
 | 1 | `(1) prepare_dataset.py` | Identical to `fed_manual 1` | Merges CVAT COCO zip exports into a single unified dataset. Not modified — included so the full data pipeline can run from within `fed_manual 2` without depending on `fed_manual 1`'s copy. |
 | 2 | `(2) dataset_analysis.py` | Identical to `fed_manual 1` | Dataset statistics, cleanup, per-category augmentation factors. Not modified. |
 | 3 | `(3) split.py` | Identical to `fed_manual 1` | Train/val/test (70/15/15) split. Not modified. |
@@ -53,6 +53,7 @@ The base model is multimodal (image branch, graph branch, scalar-feature branch,
 | 11 | `(11) cbm_partial.py` | Planned | Partial concept-bottleneck head trained alongside brand/diameter heads (shared trunk, no full model redesign), for direct comparison against TCAV on the same concept set. |
 | 12 | `(12) evaluate_explanations.py` | Planned | Quantitative reliability evaluation across all techniques above: insertion/deletion, fidelity+/-, sanity checks, stability under input perturbations. Run on the test set. |
 | 13 | `(13) expert_study/` | Planned | Materials and analysis for the expert evaluation study: final questionnaire, case selection protocol, session recording/analysis scripts. Feeds the discussion section on clinical usefulness and trust (RQ3: problematic-case detection). |
+| ** | `common_explain.py` | Done | Shared loading/preprocessing utilities for the explainability scripts in this folder (Grad-CAM, GNNExplainer, SHAP, TCAV, CBM, ...). |
 
 ---
 
