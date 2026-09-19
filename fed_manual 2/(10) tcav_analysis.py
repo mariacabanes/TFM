@@ -50,7 +50,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from scipy.stats import ttest_ind
 
-from explain_common import (
+from common_explain import (
     SEED, HERE, ActivationGrabber, ImplantProbeDataset,
     build_edge_index, build_label_maps_and_scaler, find_fed1_dir, find_train_csv,
     load_masked_image, load_model, load_probe_df, mask_path_for, IMAGE_TRANSFORM,

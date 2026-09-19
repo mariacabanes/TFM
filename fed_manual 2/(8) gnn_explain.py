@@ -54,7 +54,7 @@ import torch.nn.functional as TF
 from torch_geometric.nn import global_mean_pool
 from scipy.stats import spearmanr, pearsonr
 
-from explain_common import (
+from common_explain import (
     SEED, HERE, NODE_KEYS, ImplantProbeDataset,
     build_edge_index, build_label_maps_and_scaler, find_fed1_dir, find_train_csv,
     load_model, load_probe_df,

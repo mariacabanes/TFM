@@ -56,7 +56,7 @@ import torch
 import torch.nn.functional as TF
 from torch.utils.data import DataLoader
 
-from explain_common import (
+from common_explain import (
     SEED, HERE, ActivationGrabber, ImplantProbeDataset,
     build_edge_index, build_label_maps_and_scaler, find_fed1_dir, find_train_csv,
     load_model, load_probe_df,

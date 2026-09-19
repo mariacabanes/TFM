@@ -29,7 +29,7 @@ The base model is multimodal (image branch, graph branch, scalar-feature branch,
 | Branch | Primary technique | Secondary / comparison | Library |
 |---|---|---|---|
 | Image (EfficientNetB2) | Grad-CAM | Grad-CAM++ | custom (`captum` ships Grad-CAM but not Grad-CAM++; both are implemented by hand from a shared hook so the comparison is apples-to-apples) |
-| Graph (6 keypoints, GNN) | GNNExplainer | Counterfactual perturbation of node coordinates | `torch_geometric` |
+| Graph (6 keypoints, GNN) | GNNExplainer | Counterfactual perturbation of node coordinates | custom against `torch_geometric`'s `GCNConv` (`torch_geometric.explain`'s `Explainer` wrapper expects a plain `model(x, edge_index)` classifier, not one branch of a 3-branch model, so the algorithm is applied directly to the two `GCNConv` layers instead) |
 | Scalar features (7 features) | SHAP | Permutation importance | `shap` |
 | Clinical concepts (tipo_implante, thread angle) | TCAV | Partial concept bottleneck (comparison) | custom |
 
