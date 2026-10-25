@@ -69,11 +69,9 @@ The explained class is fixed per case (the original model's prediction, or the
 ground truth with --target true) and kept constant for every randomized model and
 every perturbation, so that only the factor under study changes.
 
-Grad-CAM / Grad-CAM++ are imported from step 7 and GNNExplainer / counterfactual node
-importance from step 8, so the evaluated explanations are exactly the ones those
-scripts produce. Integrated Gradients (Sundararajan et al. 2017) is implemented here
-(black image baseline, midpoint Riemann sum) as the pixel-level gradient attribution
-counterpart to Grad-CAM's coarse 9×9 map.
+Grad-CAM / Grad-CAM++ are imported from step 7, Integrated Gradients (black baseline)
+from step 7b and GNNExplainer / counterfactual node importance from step 8, so the
+evaluated explanations are exactly the ones those scripts produce.
 
 This script only *reads* the checkpoint trained by `fed_manual 1`'s `(6) train.py`.
 Randomized models are deep copies; the label-randomized model is trained separately
@@ -139,6 +137,7 @@ def _load_step_module(name: str, filename: str):
 
 GC = _load_step_module("gradcam_explain", "(7) gradcam_explain.py")   # compute_cams
 GE = _load_step_module("gnn_explain", "(8) gnn_explain.py")           # gnn_explain_instance, counterfactual_node_importance
+IG = _load_step_module("ig_explain", "(7b) ig_explain.py")            # integrated_gradients
 
 random.seed(SEED)
 np.random.seed(SEED)
@@ -330,24 +329,6 @@ def gradcam_maps(model, image, gnn_feat, scalar_emb, head, cls, device) -> Tuple
     return cam_gc[0], cam_gcpp[0]
 
 
-def integrated_gradients(model, image, gnn_feat, scalar_emb, head, cls, device,
-                         steps: int, batch_size: int) -> np.ndarray:
-    """IG w.r.t. the target logit, black (zero-pixel) baseline = the masked-out background
-    value. Returns the channel-summed signed attribution map (H, W)."""
-    x = image.to(device)
-    x0 = renorm(torch.zeros_like(x))
-    alphas = (torch.arange(steps, device=device, dtype=torch.float32) + 0.5) / steps
-    total_grad = torch.zeros_like(x)
-    for s in range(0, steps, batch_size):
-        a = alphas[s:s + batch_size].view(-1, 1, 1, 1)
-        xs = (x0 + a * (x - x0)).requires_grad_(True)
-        logits = image_branch_logits(model, xs, gnn_feat, scalar_emb, head)
-        grad, = torch.autograd.grad(logits[:, cls].sum(), xs)
-        total_grad += grad.sum(0)
-    attr = (x - x0) * total_grad / steps
-    return attr.sum(0).detach().cpu().numpy()
-
-
 def explain_image(model, methods, image, node_feats, scalar_feat, head, cls, device, args) -> Dict[str, np.ndarray]:
     gnn_feat, scalar_emb = side_embeddings(model, node_feats, scalar_feat, device)
     maps = {}
@@ -358,8 +339,8 @@ def explain_image(model, methods, image, node_feats, scalar_feat, head, cls, dev
         if "gradcampp" in methods:
             maps["gradcampp"] = gcpp
     if "ig" in methods:
-        maps["ig"] = integrated_gradients(model, image, gnn_feat, scalar_emb, head, cls, device,
-                                          args.ig_steps, args.batch_size)
+        maps["ig"] = IG.integrated_gradients(model, image, gnn_feat, scalar_emb, head, cls, device,
+                                             args.ig_steps, args.batch_size, baseline="black")
     return maps
 
 
