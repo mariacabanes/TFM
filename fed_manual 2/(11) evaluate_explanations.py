@@ -1,5 +1,5 @@
 """
-(12) evaluate_explanations.py — Quantitative reliability evaluation of the explainability
+(11) evaluate_explanations.py — Quantitative reliability evaluation of the explainability
 layer (image branch: Grad-CAM / Grad-CAM++ / Integrated Gradients; graph branch:
 GNNExplainer / counterfactual node perturbation), run on the test split.
 
@@ -86,10 +86,10 @@ Outputs (outputs/evaluation/):
                                       stability bar charts
 
 Usage:
-    python "(12) evaluate_explanations.py"
-    python "(12) evaluate_explanations.py" --sections fidelity --image-methods gradcam,ig --neutral blur,gray
-    python "(12) evaluate_explanations.py" --sections stability --n-perturb 20 --stability-max-per-class 5
-    python "(12) evaluate_explanations.py" --sections sanity --skip-label-randomization
+    python "(11) evaluate_explanations.py"
+    python "(11) evaluate_explanations.py" --sections fidelity --image-methods gradcam,ig --neutral blur,gray
+    python "(11) evaluate_explanations.py" --sections stability --n-perturb 20 --stability-max-per-class 5
+    python "(11) evaluate_explanations.py" --sections sanity --skip-label-randomization
 """
 
 import argparse

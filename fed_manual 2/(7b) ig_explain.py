@@ -33,7 +33,7 @@ forward per step (the same approach as steps 8 and 9).
 `captum` ships `IntegratedGradients`, but it expects a single-input model. This model
 has five inputs and only the image should vary, so IG is implemented directly (a few
 lines) to keep the same "read-only reuse of the trained submodules" approach as steps
-7–10. `(12) evaluate_explanations.py` imports `integrated_gradients` from this file,
+7–10. `(11) evaluate_explanations.py` imports `integrated_gradients` from this file,
 so the evaluated explanation is exactly the one produced here.
 
 For each brand/diameter class with enough test examples, this script:
