@@ -32,7 +32,7 @@ The base model is multimodal (image branch, graph branch, scalar-feature branch,
 | Image (EfficientNetB2), pixel level | Integrated Gradients | Grad-CAM (coarse 9×9 map) | custom (`captum`'s `IntegratedGradients` expects a single-input model; here only the image input of the 5-input model varies, so IG is implemented directly with the graph/scalar embeddings held fixed) |
 | Graph (6 keypoints, GNN) | GNNExplainer | Counterfactual perturbation of node coordinates | custom against `torch_geometric`'s `GCNConv` (`torch_geometric.explain`'s `Explainer` wrapper expects a plain `model(x, edge_index)` classifier, not one branch of a 3-branch model, so the algorithm is applied directly to the two `GCNConv` layers instead) |
 | Scalar features (7 features) | SHAP | Permutation importance | `shap` |
-| Clinical concepts (tipo_implante, thread angle) | TCAV | Partial concept bottleneck (comparison) | custom |
+| Clinical concepts (tipo_implante, thread angle) | TCAV | — | custom |
 
 ---
 
@@ -48,13 +48,13 @@ The base model is multimodal (image branch, graph branch, scalar-feature branch,
 | 5 | `(5) augmentation.py` | Identical to `fed_manual 1` | Two-stage crop + intensity augmentation. Not modified — confirmed it ignores the new `tipo_implante` column and the `concepts/` folder added in step 4. |
 | 6 | `(6) train.py` | Identical to `fed_manual 1` | Trains the base UNet + ImplantClassifier. Kept here only so the base models can be reproduced from this folder if needed; not re-run in practice since `fed_manual 1`'s trained checkpoints are reused as-is. |
 | 7 | `(7) gradcam_explain.py` | Done | Grad-CAM vs. Grad-CAM++ over the EfficientNetB2 branch's last conv feature map (`cnn_backbone.features`), computed from a single shared forward/backward pass for a fair comparison (captum ships Grad-CAM but not Grad-CAM++, so both are implemented directly). Produces per-image comparison figures, per-class aggregate saliency maps, and agreement metrics (cosine similarity, Pearson correlation, top-20% IoU) between the two methods. Outputs `outputs/explanations/gradcam/{per_image,aggregate}/` + `gradcam_comparison.json`. |
-| 7b | `(7b) ig_explain.py` | Done | Integrated Gradients (Sundararajan et al. 2017) over the EfficientNetB2 image branch: signed, pixel-level attribution of the target-class logit along the straight path from a baseline (black by default = the masked-out background; `blur`/`gray` available) to the input, midpoint Riemann sum. Graph/scalar embeddings are held fixed so only the image varies. Checks completeness (Σ IG = f(x) − f(baseline)) per example and compares IG with Grad-CAM (Spearman, Pearson, top-20% IoU on smoothed |IG|). Produces per-image figures (input, |IG|, signed IG, Grad-CAM), per-class aggregate maps, and `ig_explain.json`. Outputs `outputs/explanations/integrated_gradients/{per_image,aggregate}/`. Step 12 imports its `integrated_gradients` function. |
+| 7b | `(7b) ig_explain.py` | Done | Integrated Gradients (Sundararajan et al. 2017) over the EfficientNetB2 image branch: signed, pixel-level attribution of the target-class logit along the straight path from a baseline (black by default = the masked-out background; `blur`/`gray` available) to the input, midpoint Riemann sum. Graph/scalar embeddings are held fixed so only the image varies. Checks completeness (Σ IG = f(x) − f(baseline)) per example and compares IG with Grad-CAM (Spearman, Pearson, top-20% IoU on smoothed |IG|). Produces per-image figures (input, |IG|, signed IG, Grad-CAM), per-class aggregate maps, and `ig_explain.json`. Outputs `outputs/explanations/integrated_gradients/{per_image,aggregate}/`. Step 11 imports its `integrated_gradients` function. |
 | 8 | `(8) gnn_explain.py` | Done | GNNExplainer (Ying et al. 2019, implemented directly against the two `GCNConv` layers since `torch_geometric.explain`'s wrapper expects a plain `model(x, edge_index)` classifier) vs. counterfactual perturbation of node coordinates (each keypoint moved to the centroid of the other 5; importance = resulting drop in predicted probability), over the 6-keypoint graph branch. Produces per-example comparison figures (skeleton + importance bars), per-class aggregate keypoint/edge importance, and Spearman/Pearson agreement between the two methods. Outputs `outputs/explanations/gnn_explainer/{per_image,aggregate}/` + `gnn_explain_comparison.json`. |
 | 9 | `(9) shap_explain.py` | Done | Exact SHAP (Lundberg & Lee 2017; all 2^7 coalitions enumerated via `shap.explainers.Exact`, interventional background = 100 standardized training rows) vs. permutation importance over the 7 scalar features (`distance_cm`, `pixel_per_cm`, `bbox_width`, `bbox_height`, `implant_bbox_ratio`, `angle_left_valley`, `angle_right_valley`). Image/graph embeddings are computed once per example and held fixed, so only the scalar branch is perturbed. Explains the target class's predicted probability per brand/diameter head; produces per-example waterfall plots (feature values in original units), per-class and global beeswarm plots, a per-class signed-SHAP heatmap, SHAP-vs-permutation bar charts (Δ target prob and Δ accuracy), Spearman/Pearson agreement between the two rankings, and a SHAP additivity check. Outputs `outputs/explanations/shap/{per_image,aggregate}/` + `shap_comparison.json`. Requires `pip install shap`. |
 | 10 | `(10) tcav_analysis.py` | Done | Trains CAVs on the EfficientNetB2 bottleneck from the `concepts/` folders built in step 4 (`tipo_implante_U/Recto`, `steep_thread_angle`), computes directional derivatives (TCAV scores) per brand/diameter class against the trained `ImplantClassifier`, and bootstraps a significance test (two-sided t-test vs. random-concept CAVs). Outputs `outputs/explanations/tcav/tcav_scores.{json,png}`. |
 | 11 | `(11) evaluate_explanations.py` | Done | Quantitative reliability evaluation on the test set, reported as mean ± SD per brand/diameter class (and overall). **(i) Fidelity + sanity checks:** pixel deletion/insertion curves (AUC) for Grad-CAM, Grad-CAM++ and Integrated Gradients (IG implemented here, black baseline) with blur/gray/noise as neutral value, always against a random-order baseline; edge (30) and node (6 keypoints) deletion/insertion curves + Fidelity+/Fidelity− (probability and accuracy, several explanation sizes, vs. random selection) for GNNExplainer and the counterfactual node ranking; Adebayo et al. sanity checks — cascading model-parameter randomization (heads → fc → cnn_fc → EfficientNet blocks / gcn2 → gcn1) and label randomization (a copy of the model trained on permuted labels) — compared with Spearman (signed/abs) and top-k% IoU. **(ii) Stability:** ~20 perturbations per case (image: mild Gaussian noise, brightness, contrast, JPEG; graph: ±2–3 px keypoint noise, plus GNNExplainer's seed-only variability as reference), compared with Spearman, top-k% Jaccard and the local Lipschitz estimate, plus prediction flip rate. Reuses step 7's Grad-CAM/Grad-CAM++ and step 8's GNNExplainer/counterfactual code. Outputs `outputs/evaluation/fidelity_stability_results.json`, `fidelity_stability_{summary,per_case}.csv`, `label_randomized_model.pt` and `figures/`. |
-| 13 | `(13) expert_study/` | Planned | Materials and analysis for the expert evaluation study: final questionnaire, case selection protocol, session recording/analysis scripts. Feeds the discussion section on clinical usefulness and trust (RQ3: problematic-case detection). |
-| ** | `common_explain.py` | Done | Shared loading/preprocessing utilities for the explainability scripts in this folder (Grad-CAM, GNNExplainer, SHAP, TCAV, CBM, ...). |
+| 12 | `(12) expert_study/` | Planned | Materials and analysis for the expert evaluation study: final questionnaire, case selection protocol, session recording/analysis scripts. Feeds the discussion section on clinical usefulness and trust (RQ3: problematic-case detection). |
+| ** | `common_explain.py` | Done | Shared loading/preprocessing utilities for the explainability scripts in this folder (Grad-CAM, IG, GNNExplainer, SHAP, TCAV, evaluation). |
 
 ---
 
@@ -73,15 +73,12 @@ python "(9) shap_explain.py"
 # Step 10: TCAV (requires the concepts/ folders from step 4)
 python "(10) tcav_analysis.py"
 
-# Step 11: partial CBM comparison
-python "(11) cbm_partial.py"
-
-# Step 12: quantitative evaluation of all of the above
-python "(12) evaluate_explanations.py"
+# Step 11: quantitative evaluation of all of the above
+python "(11) evaluate_explanations.py"
 #   only some sections / methods (each section is independent):
-python "(12) evaluate_explanations.py" --sections fidelity --image-methods gradcam,ig --neutral blur,gray,noise
-python "(12) evaluate_explanations.py" --sections sanity --skip-label-randomization
-python "(12) evaluate_explanations.py" --sections stability --n-perturb 20
+python "(11) evaluate_explanations.py" --sections fidelity --image-methods gradcam,ig --neutral blur,gray,noise
+python "(11) evaluate_explanations.py" --sections sanity --skip-label-randomization
+python "(11) evaluate_explanations.py" --sections stability --n-perturb 20
 ```
 
 ## Output structure (target)
@@ -97,8 +94,7 @@ outputs/
 │   ├── integrated_gradients/  # pixel-level signed attributions (IG), per test image
 │   ├── gnn_explainer/    # keypoint/edge importance
 │   ├── shap/             # per-feature attribution plots
-│   ├── tcav/             # CAV scores per concept
-│   └── cbm/              # concept-bottleneck predictions + accuracy comparison
+│   └── tcav/             # CAV scores per concept
 ├── evaluation/
 │   ├── fidelity_stability_results.json
 │   └── figures/

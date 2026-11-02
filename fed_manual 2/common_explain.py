@@ -1,6 +1,6 @@
 """
 common_explain.py — Shared loading/preprocessing utilities for the explainability
-scripts in this folder (Grad-CAM, GNNExplainer, SHAP, TCAV, CBM, ...).
+scripts in this folder (Grad-CAM, IG, GNNExplainer, SHAP, TCAV, evaluation).
 
 Every explanation technique needs the same three things before it can do anything
 technique-specific:
